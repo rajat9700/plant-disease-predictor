@@ -1,5 +1,6 @@
 tensorflow
-gradio
-Pillow
-kagglehub
+pillow
+numpy
 matplotlib
+kagglehub
+gradio
