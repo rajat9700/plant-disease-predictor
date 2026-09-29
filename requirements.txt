@@ -1,7 +1,6 @@
 tensorflow
-gradio
-Pillow
-kagglehub
-matplotlib
+pillow
 numpy
-random
+matplotlib
+kagglehub
+gradio
