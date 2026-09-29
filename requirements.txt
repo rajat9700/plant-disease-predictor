@@ -2,3 +2,6 @@ tensorflow
 gradio
 Pillow
 kagglehub
+matplotlib
+numpy
+random
