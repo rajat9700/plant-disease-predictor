@@ -4,10 +4,12 @@ import json
 import tensorflow as tf
 from plant_disease_prediction import predict_plant_disease
 
-# 1. Load model and class names
+print("1. Starting app...")
+print("2. Loading model...")
 model = tf.keras.models.load_model("best_plant_disease_model.keras")
 with open("class_names.json") as f:
     class_names = json.load(f)
+print("Model loaded successfully!")
 
 # 2. Update your wrapper function to return a dictionary
 def classify_plant(image_filepath):
@@ -29,5 +31,6 @@ iface = gr.Interface(
 )
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
+    print("3. Launching Gradio interface...")
+    port = int(os.environ.get("PORT", 10000))
     iface.launch(server_name="0.0.0.0", server_port=port)
