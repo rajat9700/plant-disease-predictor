@@ -31,6 +31,11 @@ iface = gr.Interface(
 )
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     print("3. Launching Gradio interface...")
     port = int(os.environ.get("PORT", 10000))
     iface.launch(server_name="0.0.0.0", server_port=port)
+=======
+    port = int(os.environ.get("PORT", 7860))
+    iface.launch(server_name="0.0.0.0", server_port=port)
+>>>>>>> 71dc6e541997540af7cee55b40c2ec5592afb393
