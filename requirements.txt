@@ -3,8 +3,4 @@ pillow
 numpy
 matplotlib
 kagglehub
-<<<<<<< HEAD
 gradio
-=======
-gradio
->>>>>>> 71dc6e541997540af7cee55b40c2ec5592afb393
