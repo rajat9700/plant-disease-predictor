@@ -2,3 +2,4 @@ tensorflow
 gradio
 Pillow
 kagglehub
+matplotlib
