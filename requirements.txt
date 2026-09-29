@@ -1,3 +1,4 @@
 tensorflow
 gradio
 Pillow
+kagglehub
