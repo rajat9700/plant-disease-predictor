@@ -57,6 +57,22 @@ HISTORY_PLOT_PATH = "training_history.png"
 
 VALID_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".gif")
 
+# --- "Not a leaf" rejection settings -----------------------------------
+# The model is trained ONLY on leaf images, so it has no real concept of
+# "not a leaf" -- it will always force its softmax output onto one of the
+# known classes, sometimes with high confidence, even for a photo of a car
+# or a face. Two heuristics mitigate that:
+#   1. CONFIDENCE_THRESHOLD: reject predictions the model itself is unsure of.
+#   2. USE_COLOR_HEURISTIC: a cheap PIL-only sanity check (no model call)
+#      that the image contains vegetation-like colors before it is even
+#      passed to the network.
+# Neither is perfect. The robust fix is to retrain with an explicit
+# "not_a_leaf" / background class built from non-plant images.
+CONFIDENCE_THRESHOLD = 60.0  # percent; below this -> flagged as invalid
+USE_COLOR_HEURISTIC = True
+MIN_VEGETATION_RATIO = 0.15  # min fraction of green/yellow/brown pixels required
+INVALID_LABEL = "Invalid (No leaf detected)"
+
 # Reproducibility
 random.seed(SEED)
 np.random.seed(SEED)
@@ -347,23 +363,56 @@ def plot_training_history(history, save_path: str = HISTORY_PLOT_PATH) -> None:
 # ---------------------------------------------------------------------------
 # 4. Inference
 # ---------------------------------------------------------------------------
+def _vegetation_ratio(img: Image.Image) -> float:
+    """
+    Fraction of pixels whose hue falls in the green/yellow/brown range typical
+    of healthy or diseased leaves (PIL only, no model). Used as a cheap
+    pre-filter, not a classifier -- see the note above CONFIDENCE_THRESHOLD.
+    """
+    h, s, v = img.convert("HSV").split()
+    h_deg = np.array(h, dtype=np.float32) * (360.0 / 255.0)  # PIL hue is 0-255
+    s_frac = np.array(s, dtype=np.float32) / 255.0
+    v_frac = np.array(v, dtype=np.float32) / 255.0
+
+    # ~20-160 degrees covers yellow -> green -> olive/brown; low saturation/value
+    # pixels (gray, near-black/white backgrounds, paper, skin highlights) excluded.
+    vegetation_mask = (h_deg >= 20) & (h_deg <= 160) & (s_frac >= 0.15) & (v_frac >= 0.10)
+    return float(np.mean(vegetation_mask))
+
+
 def predict_plant_disease(image_path: str, model: tf.keras.Model, class_names: list):
     """
     Predict the disease class of a single leaf image.
 
-    Steps: PIL load -> RGB -> resize to 224x224 -> MobileNetV2 preprocessing
-    (scale pixels to [-1, 1]) -> model.predict -> print class + confidence.
+    Steps: PIL load -> RGB -> (optional vegetation-color sanity check) ->
+    resize to 224x224 -> MobileNetV2 preprocessing (scale pixels to [-1, 1])
+    -> model.predict -> print class + confidence.
+
+    If the image doesn't look like vegetation, or the model's own confidence
+    is below CONFIDENCE_THRESHOLD, the function reports INVALID_LABEL instead
+    of forcing a guess.
 
     Returns:
-        (predicted_class_name, confidence_percentage)
+        (predicted_class_name_or_INVALID_LABEL, confidence_percentage)
     """
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: '{image_path}'")
 
     # Load with PIL; convert() guarantees 3 channels (handles RGBA / grayscale / palette)
     with Image.open(image_path) as img:
-        img = img.convert("RGB").resize(IMG_SIZE, Image.BILINEAR)
-        img_array = np.array(img, dtype=np.float32)  # shape: (224, 224, 3), range 0-255
+        img = img.convert("RGB")
+
+        if USE_COLOR_HEURISTIC:
+            ratio = _vegetation_ratio(img)
+            if ratio < MIN_VEGETATION_RATIO:
+                print(f"Image      : {image_path}")
+                print(f"Prediction : {INVALID_LABEL}")
+                print(f"Reason     : only {ratio * 100:.1f}% vegetation-like pixels "
+                      f"(need >= {MIN_VEGETATION_RATIO * 100:.0f}%)")
+                return INVALID_LABEL, 0.0
+
+        img_resized = img.resize(IMG_SIZE, Image.BILINEAR)
+        img_array = np.array(img_resized, dtype=np.float32)  # (224, 224, 3), range 0-255
 
     img_array = np.expand_dims(img_array, axis=0)  # shape: (1, 224, 224, 3)
     img_array = preprocess_input(img_array)  # MobileNetV2 preprocessing -> [-1, 1]
@@ -374,6 +423,13 @@ def predict_plant_disease(image_path: str, model: tf.keras.Model, class_names: l
     confidence = float(predictions[predicted_index]) * 100.0
 
     print(f"Image      : {image_path}")
+
+    if confidence < CONFIDENCE_THRESHOLD:
+        print(f"Prediction : {INVALID_LABEL}")
+        print(f"Reason     : low model confidence ({confidence:.2f}% < "
+              f"{CONFIDENCE_THRESHOLD:.0f}%), closest guess was '{predicted_class}'")
+        return INVALID_LABEL, confidence
+
     print(f"Prediction : {predicted_class}")
     print(f"Confidence : {confidence:.2f}%")
 
